@@ -1,173 +1,127 @@
-import os
 from flask import Flask, request
-from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 import pandas as pd
+import os
 
-# --- Load Secrets from Environment ---
-TWILIO_SID = os.getenv("TWILIO_SID")
-TWILIO_AUTH = os.getenv("TWILIO_AUTH")
-TWILIO_FROM = os.getenv("TWILIO_FROM", "whatsapp:+14155238886")
-PDF_BASE_URL = os.getenv("PDF_BASE_URL", "https://your-domain.com")
-REFERRAL_FORM_URL = os.getenv("REFERRAL_FORM_URL", "https://forms.gle/your-form-link")
-
-# --- Relative File Paths for Render ---
-EMP_DETAILS_PATH = os.getenv("EMP_DETAILS_PATH", "Emp_Details.xlsx")
-PF_ESIC_DETAILS_PATH = os.getenv("PF_ESIC_DETAILS_PATH", "Pf_esic_details.xlsx")
-SALARY_FOLDER = os.getenv("SALARY_FOLDER", "salary_slips")
-PF_ESIC_FOLDER = os.getenv("PF_ESIC_FOLDER", "pf_esic_cards")
-
-# --- Init ---
 app = Flask(__name__)
-client = Client(TWILIO_SID, TWILIO_AUTH)
+
 sessions = {}
 
-# --- Load Excel Files ---
-print("📁 Loading Excel files...")
-try:
-    emp_df = pd.read_excel(EMP_DETAILS_PATH)
-    pf_df = pd.read_excel(PF_ESIC_DETAILS_PATH)
+# Paths for your Excel and PDF data
+EMP_DETAILS_PATH = "Emp_Details.xlsx"
+PF_ESIC_PATH = "Pf_esic_details.xlsx"
+SALARY_SLIPS_FOLDER = "salary_slips"
+PF_ESIC_CARDS_FOLDER = "pf_esic_cards"
 
-    emp_df.columns = emp_df.columns.str.strip()
-    emp_df['Emp ID'] = emp_df['Emp ID'].astype(str).str.strip().str.upper()
-    emp_df['Mobile'] = emp_df['Mobile'].astype(str).str.strip()
-
-    pf_df.columns = pf_df.columns.str.strip()
-    pf_df['Emp ID'] = pf_df['Emp ID'].astype(str).str.strip().str.upper()
-    pf_df['ESIC Card Filename'] = pf_df['ESIC Card Filename'].astype(str).str.strip()
-
-    print("✅ Excel files loaded.")
-    print("📌 EMP IDs:", emp_df['Emp ID'].tolist())
-
-except Exception as e:
-    print("❌ Error loading Excel files:", e)
-    emp_df = pd.DataFrame()
-    pf_df = pd.DataFrame()
-
-# --- Helper Functions ---
-def extract_digits(num_str):
-    return ''.join(ch for ch in num_str if ch.isdigit())[-10:]
+# Referral Google Form link
+REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
 
 def find_emp_id(mobile):
-    try:
-        mobile = extract_digits(mobile)
-        row = emp_df[emp_df["Mobile"].str[-10:] == mobile]
-        if not row.empty:
-            return row["Emp ID"].values[0]
-    except Exception as e:
-        print(f"[ERROR] find_emp_id failed: {e}")
-    return None
+    df = pd.read_excel(EMP_DETAILS_PATH)
+    row = df[df['Mobile'] == int(mobile)]
+    return row['Emp ID'].values[0] if not row.empty else None
 
 def find_mobile(emp_id):
-    try:
-        emp_id = emp_id.strip().upper()
-        row = emp_df.loc[emp_df["Emp ID"] == emp_id]
-        if not row.empty:
-            return str(row["Mobile"].values[0])
-        else:
-            print(f"[DEBUG] Emp ID '{emp_id}' not found in: {emp_df['Emp ID'].tolist()}")
-    except Exception as e:
-        print(f"[ERROR] find_mobile failed: {e}")
-    return None
+    df = pd.read_excel(EMP_DETAILS_PATH)
+    row = df[df['Emp ID'] == emp_id]
+    return str(row['Mobile'].values[0]) if not row.empty else None
 
-def send_pf_card(emp_id):
-    try:
-        row = pf_df.loc[pf_df["Emp ID"] == emp_id]
-        if not row.empty:
-            filename = row["ESIC Card Filename"].values[0]
-            file_path = os.path.join(PF_ESIC_FOLDER, filename)
-            if os.path.exists(file_path):
-                link = f"{PDF_BASE_URL}/pf_esic_cards/{filename}"
-                return {"reply": f"🪪 PF/ESIC Card:\n{link}"}
-            else:
-                print(f"[ERROR] File not found: {file_path}")
-    except Exception as e:
-        print(f"[ERROR] send_pf_card failed: {e}")
-    return {"reply": "❌ PF/ESIC card not found. Please contact HR."}
+def get_salary_pdf(emp_id, month):
+    month = month.strip().capitalize()
+    folder_name = f"{month}_Salary"
+    filename = f"{emp_id}_{month}.pdf"
+    file_path = os.path.join(SALARY_SLIPS_FOLDER, "2025", folder_name, filename)
+    return file_path if os.path.exists(file_path) else None
 
-# --- Bot Logic Handler ---
-def bot_simulator(msg, phone):
-    session = sessions.get(phone, {})
-    m = msg.strip().lower()
+def get_pf_esic_pdf(emp_id):
+    filename = f"esic_card_{emp_id}.pdf"
+    file_path = os.path.join(PF_ESIC_CARDS_FOLDER, filename)
+    return file_path if os.path.exists(file_path) else None
 
-    if m in ["hi", "hello", "start"]:
-        sessions[phone] = {}
-        return {
-            "reply": (
-                "👋 Welcome to Commet PayrollBot!\n\n"
-                "1️⃣ Salary Slip\n"
-                "2️⃣ PF & ESIC Card\n"
-                "4️⃣ Refer & Earn 📝"
-            )
-        }
-
-    elif m == "1":
-        session["expecting"] = "salary"
-        sessions[phone] = session
-        return {"reply": "📌 Enter your Employee ID or 10-digit Mobile Number:"}
-
-    elif m == "2":
-        session["expecting"] = "pf"
-        sessions[phone] = session
-        return {"reply": "📌 Enter your Employee ID or 10-digit Mobile Number:"}
-
-    elif m == "4":
-        return {"reply": f"📝 Refer your friends!\n{REFERRAL_FORM_URL}"}
-
-    elif m.isdigit() and len(m) == 10:
-        emp_id = find_emp_id(m)
-        if not emp_id:
-            return {"reply": "❌ Mobile number not found."}
-        session["emp_id"] = emp_id
-        sessions[phone] = session
-        if session.get("expecting") == "salary":
-            return {"reply": "📅 Enter the month (e.g., June_2025):"}
-        elif session.get("expecting") == "pf":
-            return send_pf_card(emp_id)
-
-    elif m.startswith("emp"):
-        emp_id = m.upper()
-        if not find_mobile(emp_id):
-            return {"reply": f"❌ EMP ID {emp_id} not found."}
-        session["emp_id"] = emp_id
-        sessions[phone] = session
-        if session.get("expecting") == "salary":
-            return {"reply": "📅 Enter the month (e.g., June_2025):"}
-        elif session.get("expecting") == "pf":
-            return send_pf_card(emp_id)
-
-    elif session.get("expecting") == "salary" and session.get("emp_id"):
-        emp_id = session["emp_id"]
-        try:
-            month, year = m.split("_")
-            folder = os.path.join(SALARY_FOLDER, year, f"{month}_Salary")
-            file_path = os.path.join(folder, f"{emp_id}.pdf")
-            if os.path.exists(file_path):
-                link = f"{PDF_BASE_URL}/salary_slips/{year}/{month}_Salary/{emp_id}.pdf"
-                return {"reply": f"📄 Salary Slip for {emp_id}:\n{link}"}
-            else:
-                return {"reply": "❌ Slip not found for that month. Try another month or contact HR."}
-        except Exception as e:
-            print(f"[ERROR] Invalid salary input: {e}")
-            return {"reply": "❌ Invalid format. Please enter month like: June_2025"}
-
-    return {"reply": "❌ Invalid input. Please send 'hi' to start again."}
-
-# --- Flask Route for Twilio ---
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
-    body = request.form.get("Body", "")
-    from_num = request.form.get("From", "")
-    phone = extract_digits(from_num)
+    incoming_msg = request.values.get("Body", "").strip()
+    phone = request.values.get("From", "")
+    phone = phone.replace("whatsapp:", "")
 
-    print(f"📩 Message from {phone}: {body}")
-    res = bot_simulator(body, phone)
+    resp = MessagingResponse()
+    msg = resp.message()
 
-    twiml = MessagingResponse()
-    twiml.message(res["reply"])
-    return str(twiml)
+    session = sessions.get(phone, {})
+    expecting = session.get("expecting")
 
-# --- Main Entry ---
+    if incoming_msg.lower() in ["hi", "hello"]:
+        session.clear()
+        sessions[phone] = session
+        welcome_text = (
+            "👋 Welcome to Commet PayrollBot!\n\n"
+            "1️⃣ Salary Slip\n"
+            "2️⃣ PF & ESIC Card\n"
+            "3️⃣ Refer & Earn 📝\n"
+            "\n📞 Contact Support:\n"
+            "• EN - +91 9876543210\n"
+            "• HI - +91 9876543211\n"
+            "• KA - +91 9876543212\n"
+            "• TA - +91 9876543213"
+        )
+        msg.body(welcome_text)
+        return str(resp)
+
+    elif incoming_msg == "1":
+        session["expecting"] = "salary"
+        sessions[phone] = session
+        msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
+        return str(resp)
+
+    elif incoming_msg == "2":
+        session["expecting"] = "pfesic"
+        sessions[phone] = session
+        msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
+        return str(resp)
+
+    elif incoming_msg == "3":
+        msg.body(f"📝 Fill this referral form to earn rewards: {REFERRAL_FORM_LINK}")
+        return str(resp)
+
+    elif expecting == "salary":
+        if "emp_id" not in session:
+            emp_id = incoming_msg if incoming_msg.startswith("EMP") else find_emp_id(incoming_msg)
+            if not emp_id:
+                msg.body("❌ Employee not found. Please enter a valid Employee ID or Mobile Number.")
+                return str(resp)
+            session["emp_id"] = emp_id
+            sessions[phone] = session
+            msg.body("📅 Enter the month (e.g., June):")
+            return str(resp)
+        else:
+            month = incoming_msg
+            emp_id = session["emp_id"]
+            pdf_path = get_salary_pdf(emp_id, month)
+            if pdf_path:
+                msg.media(request.url_root + pdf_path.replace(" ", "%20"))
+                msg.body(f"✅ Salary Slip for {month} - {emp_id}")
+            else:
+                msg.body("❌ Salary Slip not found for the given month.")
+            sessions.pop(phone, None)
+            return str(resp)
+
+    elif expecting == "pfesic":
+        emp_id = incoming_msg if incoming_msg.startswith("EMP") else find_emp_id(incoming_msg)
+        if not emp_id:
+            msg.body("❌ Employee not found. Please enter a valid Employee ID or Mobile Number.")
+            return str(resp)
+        pdf_path = get_pf_esic_pdf(emp_id)
+        if pdf_path:
+            msg.media(request.url_root + pdf_path.replace(" ", "%20"))
+            msg.body(f"✅ PF & ESIC Card - {emp_id}")
+        else:
+            msg.body("❌ PF/ESIC card not found.")
+        sessions.pop(phone, None)
+        return str(resp)
+
+    else:
+        msg.body("❗ Invalid option. Please reply with 'Hi' to restart.")
+        return str(resp)
+
 if __name__ == "__main__":
-    print("✅ Starting Flask server...")
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
