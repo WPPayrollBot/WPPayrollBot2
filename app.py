@@ -11,11 +11,11 @@ TWILIO_FROM = os.getenv("TWILIO_FROM", "whatsapp:+14155238886")
 PDF_BASE_URL = os.getenv("PDF_BASE_URL", "https://your-domain.com")
 REFERRAL_FORM_URL = os.getenv("REFERRAL_FORM_URL", "https://forms.gle/your-form-link")
 
-# --- Local Paths ---
-EMP_DETAILS_PATH = os.getenv("EMP_DETAILS_PATH", r"C:\Wh Bot\Emp_Details.xlsx")
-PF_ESIC_DETAILS_PATH = os.getenv("PF_ESIC_DETAILS_PATH", r"C:\Wh Bot\Pf_esic_details.xlsx")
-SALARY_FOLDER = os.getenv("SALARY_FOLDER", r"C:\Wh Bot\salary_slips")
-PF_ESIC_FOLDER = os.getenv("PF_ESIC_FOLDER", r"C:\Wh Bot\pf_esic_cards")
+# --- Relative File Paths for Render ---
+EMP_DETAILS_PATH = os.getenv("EMP_DETAILS_PATH", "Emp_Details.xlsx")
+PF_ESIC_DETAILS_PATH = os.getenv("PF_ESIC_DETAILS_PATH", "Pf_esic_details.xlsx")
+SALARY_FOLDER = os.getenv("SALARY_FOLDER", "salary_slips")
+PF_ESIC_FOLDER = os.getenv("PF_ESIC_FOLDER", "pf_esic_cards")
 
 # --- Init ---
 app = Flask(__name__)
