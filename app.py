@@ -5,23 +5,27 @@ import os
 
 app = Flask(__name__)
 
-# Use relative paths
+# Base paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 EMP_DETAILS_PATH = os.path.join(BASE_DIR, "Emp_Details.xlsx")
 PF_ESIC_PATH = os.path.join(BASE_DIR, "Pf_esic_details.xlsx")
 SALARY_SLIPS_FOLDER = os.path.join(BASE_DIR, "salary_slips")
 PF_ESIC_CARDS_FOLDER = os.path.join(BASE_DIR, "pf_esic_cards")
 
+# External links
 REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
+BASE_URL = "https://comett-6.onrender.com"  # update if hosted somewhere else
 
+# Session store
 sessions = {}
 
+# Helper: Find employee ID from mobile
 def find_emp_id(mobile):
     df = pd.read_excel(EMP_DETAILS_PATH)
     row = df[df['Mobile'] == int(mobile)]
     return row['Emp ID'].values[0] if not row.empty else None
 
+# Helper: Get salary slip path
 def get_salary_pdf(emp_id, month):
     month = month.strip().capitalize()
     folder_name = f"{month}_Salary"
@@ -30,11 +34,13 @@ def get_salary_pdf(emp_id, month):
     abs_path = os.path.join(SALARY_SLIPS_FOLDER, rel_path)
     return (rel_path, abs_path) if os.path.exists(abs_path) else (None, None)
 
+# Helper: Get PF/ESIC card path
 def get_pf_esic_pdf(emp_id):
     filename = f"esic_card_{emp_id}.pdf"
     abs_path = os.path.join(PF_ESIC_CARDS_FOLDER, filename)
     return (filename, abs_path) if os.path.exists(abs_path) else (None, None)
 
+# Routes to serve files
 @app.route("/salary_slips/<path:filename>")
 def serve_salary_pdf(filename):
     return send_from_directory(SALARY_SLIPS_FOLDER, filename)
@@ -43,14 +49,20 @@ def serve_salary_pdf(filename):
 def serve_pf_card(filename):
     return send_from_directory(PF_ESIC_CARDS_FOLDER, filename)
 
+# Main WhatsApp route
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming_msg = request.values.get("Body", "").strip()
     phone = request.values.get("From", "").replace("whatsapp:", "")
+    print(f"[From {phone}] User sent: {repr(incoming_msg)}")  # 🔍 Debug
+
+    # Normalize emojis/symbols
+    normalized = incoming_msg.replace("⿡", "1").replace("⿢", "2").replace("⿤", "3")
+    normalized = normalized.replace("1️⃣", "1").replace("2️⃣", "2").replace("3️⃣", "3")
+
     resp = MessagingResponse()
     msg = resp.message()
 
-    # ✅ FIX: Use setdefault so session persists properly
     session = sessions.setdefault(phone, {})
     expecting = session.get("expecting")
 
@@ -69,17 +81,17 @@ def whatsapp():
         )
         return str(resp)
 
-    elif incoming_msg == "1":
+    elif normalized == "1":
         session["expecting"] = "salary"
         msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
         return str(resp)
 
-    elif incoming_msg == "2":
+    elif normalized == "2":
         session["expecting"] = "pfesic"
         msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
         return str(resp)
 
-    elif incoming_msg == "3":
+    elif normalized == "3":
         msg.body(f"📝 Fill this referral form to earn rewards: {REFERRAL_FORM_LINK}")
         return str(resp)
 
@@ -97,7 +109,8 @@ def whatsapp():
             emp_id = session["emp_id"]
             rel_path, abs_path = get_salary_pdf(emp_id, month)
             if abs_path:
-                msg.media(request.url_root + f"salary_slips/{rel_path.replace(' ', '%20')}")
+                media_url = f"{BASE_URL}/salary_slips/{rel_path.replace(' ', '%20')}"
+                msg.media(media_url)
                 msg.body(f"✅ Salary Slip for {month} - {emp_id}")
             else:
                 msg.body("❌ Salary Slip not found for the given month.")
@@ -111,7 +124,8 @@ def whatsapp():
             msg.body("❌ PF/ESIC card not found or invalid employee ID.")
             sessions.pop(phone, None)
             return str(resp)
-        msg.media(request.url_root + f"pf_esic_cards/{filename.replace(' ', '%20')}")
+        media_url = f"{BASE_URL}/pf_esic_cards/{filename.replace(' ', '%20')}"
+        msg.media(media_url)
         msg.body(f"✅ PF & ESIC Card - {emp_id}")
         sessions.pop(phone, None)
         return str(resp)
@@ -120,5 +134,6 @@ def whatsapp():
         msg.body("❗ Invalid option. Please reply with 'Hi' to restart.")
         return str(resp)
 
+# Local testing (disabled on Render)
 if __name__ == "__main__":
     app.run(debug=True)
