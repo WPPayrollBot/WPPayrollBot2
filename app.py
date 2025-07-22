@@ -14,7 +14,7 @@ PF_ESIC_CARDS_FOLDER = os.path.join(BASE_DIR, "pf_esic_cards")
 
 # External links
 REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
-BASE_URL = "https://comett-6.onrender.com"  # update if hosted somewhere else
+BASE_URL = "https://comett-9.onrender.com"  # update if hosted somewhere else
 
 # Session store
 sessions = {}
