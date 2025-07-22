@@ -14,18 +14,18 @@ PF_ESIC_CARDS_FOLDER = os.path.join(BASE_DIR, "pf_esic_cards")
 
 # External links
 REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
-BASE_URL = "https://comett-9.onrender.com"  # update if hosted somewhere else
+BASE_URL = "https://comett-9.onrender.com"  # <-- UPDATE THIS IF HOSTED ELSEWHERE
 
-# Session store
+# In-memory sessions
 sessions = {}
 
-# Helper: Find employee ID from mobile
+# ---------- Helpers ----------
+
 def find_emp_id(mobile):
     df = pd.read_excel(EMP_DETAILS_PATH)
     row = df[df['Mobile'] == int(mobile)]
     return row['Emp ID'].values[0] if not row.empty else None
 
-# Helper: Get salary slip path
 def get_salary_pdf(emp_id, month):
     month = month.strip().capitalize()
     folder_name = f"{month}_Salary"
@@ -34,13 +34,13 @@ def get_salary_pdf(emp_id, month):
     abs_path = os.path.join(SALARY_SLIPS_FOLDER, rel_path)
     return (rel_path, abs_path) if os.path.exists(abs_path) else (None, None)
 
-# Helper: Get PF/ESIC card path
 def get_pf_esic_pdf(emp_id):
     filename = f"esic_card_{emp_id}.pdf"
     abs_path = os.path.join(PF_ESIC_CARDS_FOLDER, filename)
     return (filename, abs_path) if os.path.exists(abs_path) else (None, None)
 
-# Routes to serve files
+# ---------- File Serving Routes ----------
+
 @app.route("/salary_slips/<path:filename>")
 def serve_salary_pdf(filename):
     return send_from_directory(SALARY_SLIPS_FOLDER, filename)
@@ -49,14 +49,15 @@ def serve_salary_pdf(filename):
 def serve_pf_card(filename):
     return send_from_directory(PF_ESIC_CARDS_FOLDER, filename)
 
-# Main WhatsApp route
+# ---------- WhatsApp Bot Route ----------
+
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming_msg = request.values.get("Body", "").strip()
     phone = request.values.get("From", "").replace("whatsapp:", "")
-    print(f"[From {phone}] User sent: {repr(incoming_msg)}")  # 🔍 Debug
+    print(f"[From {phone}] User sent: {repr(incoming_msg)}")  # Debug
 
-    # Normalize emojis/symbols
+    # Normalize emoji buttons
     normalized = incoming_msg.replace("⿡", "1").replace("⿢", "2").replace("⿤", "3")
     normalized = normalized.replace("1️⃣", "1").replace("2️⃣", "2").replace("3️⃣", "3")
 
@@ -66,6 +67,7 @@ def whatsapp():
     session = sessions.setdefault(phone, {})
     expecting = session.get("expecting")
 
+    # ----- START FLOW -----
     if incoming_msg.lower() in ["hi", "hello"]:
         session.clear()
         msg.body(
@@ -95,6 +97,7 @@ def whatsapp():
         msg.body(f"📝 Fill this referral form to earn rewards: {REFERRAL_FORM_LINK}")
         return str(resp)
 
+    # ----- SALARY FLOW -----
     elif expecting == "salary":
         if "emp_id" not in session:
             emp_id = incoming_msg if incoming_msg.startswith("EMP") else find_emp_id(incoming_msg)
@@ -117,6 +120,7 @@ def whatsapp():
             sessions.pop(phone, None)
             return str(resp)
 
+    # ----- PF/ESIC FLOW -----
     elif expecting == "pfesic":
         emp_id = incoming_msg if incoming_msg.startswith("EMP") else find_emp_id(incoming_msg)
         filename, abs_path = get_pf_esic_pdf(emp_id)
@@ -130,10 +134,11 @@ def whatsapp():
         sessions.pop(phone, None)
         return str(resp)
 
+    # ----- INVALID OPTION -----
     else:
         msg.body("❗ Invalid option. Please reply with 'Hi' to restart.")
         return str(resp)
 
-# Local testing (disabled on Render)
+# ---------- Local Test Mode ----------
 if __name__ == "__main__":
     app.run(debug=True)
