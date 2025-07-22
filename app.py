@@ -1,3 +1,4 @@
+
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import pandas as pd
@@ -8,10 +9,10 @@ app = Flask(__name__)
 sessions = {}
 
 # Paths for your Excel and PDF data
-EMP_DETAILS_PATH = "Emp_Details.xlsx"
-PF_ESIC_PATH = "Pf_esic_details.xlsx"
-SALARY_SLIPS_FOLDER = "salary_slips"
-PF_ESIC_CARDS_FOLDER = "pf_esic_cards"
+EMP_DETAILS_PATH = "C:\Wh Bot\Emp_Details.xlsx"
+PF_ESIC_PATH = "C:\Wh Bot\Pf_esic_details.xlsx"
+SALARY_SLIPS_FOLDER = "C:\Wh Bot\salary_slips"
+PF_ESIC_CARDS_FOLDER = "C:\Wh Bot\pf_esic_cards"
 
 # Referral Google Form link
 REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
