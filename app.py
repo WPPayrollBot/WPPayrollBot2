@@ -37,7 +37,7 @@ def get_pf_esic_pdf(emp_id):
 
 @app.route("/salary_slips/<path:filename>")
 def serve_salary_pdf(filename):
-    return send_from_directory(os.path.join(SALARY_SLIPS_FOLDER), filename)
+    return send_from_directory(SALARY_SLIPS_FOLDER, filename)
 
 @app.route("/pf_esic_cards/<filename>")
 def serve_pf_card(filename):
@@ -50,12 +50,12 @@ def whatsapp():
     resp = MessagingResponse()
     msg = resp.message()
 
-    session = sessions.get(phone, {})
+    # ✅ FIX: Use setdefault so session persists properly
+    session = sessions.setdefault(phone, {})
     expecting = session.get("expecting")
 
     if incoming_msg.lower() in ["hi", "hello"]:
         session.clear()
-        sessions[phone] = session
         msg.body(
             "👋 Welcome to Commet PayrollBot!\n\n"
             "1️⃣ Salary Slip\n"
@@ -71,13 +71,11 @@ def whatsapp():
 
     elif incoming_msg == "1":
         session["expecting"] = "salary"
-        sessions[phone] = session
         msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
         return str(resp)
 
     elif incoming_msg == "2":
         session["expecting"] = "pfesic"
-        sessions[phone] = session
         msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
         return str(resp)
 
@@ -92,7 +90,6 @@ def whatsapp():
                 msg.body("❌ Employee not found. Please enter a valid Employee ID or Mobile Number.")
                 return str(resp)
             session["emp_id"] = emp_id
-            sessions[phone] = session
             msg.body("📅 Enter the month (e.g., June):")
             return str(resp)
         else:
