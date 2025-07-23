@@ -14,7 +14,7 @@ PF_ESIC_CARDS_FOLDER = os.path.join(BASE_DIR, "pf_esic_cards")
 
 # External links
 REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
-BASE_URL = "https://comett-10.onrender.com"  # Replace with your actual deployed domain
+BASE_URL = "https://comett-10.onrender.com"  # Update with your actual Render domain
 
 # In-memory session store
 sessions = {}
@@ -57,7 +57,6 @@ def whatsapp():
     phone = request.values.get("From", "").replace("whatsapp:", "")
     print(f"[From {phone}] User sent: {repr(incoming_msg)}")
 
-    # Normalize common Unicode emoji characters
     normalized = incoming_msg.replace("⿡", "1").replace("⿢", "2").replace("⿤", "3")
     normalized = normalized.replace("1️⃣", "1").replace("2️⃣", "2").replace("3️⃣", "3")
 
@@ -68,6 +67,20 @@ def whatsapp():
     expecting = session.get("expecting")
 
     if incoming_msg.lower() in ["hi", "hello"]:
+        # Verify WhatsApp number is registered
+        try:
+            df = pd.read_excel(EMP_DETAILS_PATH)
+            registered_numbers = df["Mobile"].astype(str).tolist()
+        except Exception as e:
+            msg.body("❌ Error reading employee database.")
+            print("Excel load error:", e)
+            return str(resp)
+
+        user_number = phone[-10:]
+        if user_number not in registered_numbers:
+            msg.body("❌ Your number is not registered with us. Please contact HR.")
+            return str(resp)
+
         session.clear()
         msg.body(
             "👋 Welcome to Commet PayrollBot!\n\n"
@@ -80,24 +93,20 @@ def whatsapp():
             "• KA - +91 9876543212\n"
             "• TA - +91 9876543213"
         )
-        print(str(resp))
         return str(resp)
 
     elif normalized == "1":
         session["expecting"] = "salary"
         msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
-        print(str(resp))
         return str(resp)
 
     elif normalized == "2":
         session["expecting"] = "pfesic"
         msg.body("📌 Enter your Employee ID or 10-digit Mobile Number:")
-        print(str(resp))
         return str(resp)
 
     elif normalized == "3":
         msg.body(f"📝 Fill this referral form to earn rewards: {REFERRAL_FORM_LINK}")
-        print(str(resp))
         return str(resp)
 
     elif expecting == "salary":
@@ -105,11 +114,9 @@ def whatsapp():
             emp_id = incoming_msg if incoming_msg.startswith("EMP") else find_emp_id(incoming_msg)
             if not emp_id:
                 msg.body("❌ Employee not found. Please enter a valid Employee ID or Mobile Number.")
-                print(str(resp))
                 return str(resp)
             session["emp_id"] = emp_id
             msg.body("📅 Enter the month (e.g., June):")
-            print(str(resp))
             return str(resp)
         else:
             month = incoming_msg
@@ -122,7 +129,6 @@ def whatsapp():
             else:
                 msg.body("❌ Salary Slip not found for the given month.")
             sessions.pop(phone, None)
-            print(str(resp))
             return str(resp)
 
     elif expecting == "pfesic":
@@ -131,20 +137,17 @@ def whatsapp():
         if not emp_id or not abs_path:
             msg.body("❌ PF/ESIC card not found or invalid employee ID.")
             sessions.pop(phone, None)
-            print(str(resp))
             return str(resp)
         media_url = f"{BASE_URL}/pf_esic_cards/{filename.replace(' ', '%20')}"
         msg.media(media_url)
         msg.body(f"✅ PF & ESIC Card - {emp_id}")
         sessions.pop(phone, None)
-        print(str(resp))
         return str(resp)
 
     else:
         msg.body("❗ Invalid option. Please reply with 'Hi' to restart.")
-        print(str(resp))
         return str(resp)
 
-# Only for local debugging
+# Run locally for testing
 if __name__ == "__main__":
     app.run(debug=True)
