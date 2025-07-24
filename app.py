@@ -14,18 +14,26 @@ PF_ESIC_CARDS_FOLDER = os.path.join(BASE_DIR, "pf_esic_cards")
 
 # External links
 REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
-BASE_URL = "https://comett-10.onrender.com"  # Update with your actual Render domain
+BASE_URL = "https://comett-10.onrender.com"  # Your Render domain
 
 # In-memory session store
 sessions = {}
 
-# Helper: Find employee ID from mobile
+# Render live check
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ Comett Payroll Bot is live!"
+
+@app.route("/ping", methods=["GET"])
+def ping():
+    return "pong", 200
+
+# --- Helpers ---
 def find_emp_id(mobile):
     df = pd.read_excel(EMP_DETAILS_PATH)
     row = df[df['Mobile'] == int(mobile)]
     return row['Emp ID'].values[0] if not row.empty else None
 
-# Helper: Get salary slip path
 def get_salary_pdf(emp_id, month):
     month = month.strip().capitalize()
     folder_name = f"{month}_Salary"
@@ -34,23 +42,21 @@ def get_salary_pdf(emp_id, month):
     abs_path = os.path.join(SALARY_SLIPS_FOLDER, rel_path)
     return (rel_path, abs_path) if os.path.exists(abs_path) else (None, None)
 
-# Helper: Get PF/ESIC card path
 def get_pf_esic_pdf(emp_id):
     filename = f"esic_card_{emp_id}.pdf"
     abs_path = os.path.join(PF_ESIC_CARDS_FOLDER, filename)
     return (filename, abs_path) if os.path.exists(abs_path) else (None, None)
 
-# Serve salary PDFs
+# --- File Serving ---
 @app.route("/salary_slips/<path:filename>")
 def serve_salary_pdf(filename):
     return send_from_directory(SALARY_SLIPS_FOLDER, filename)
 
-# Serve PF/ESIC cards
 @app.route("/pf_esic_cards/<filename>")
 def serve_pf_card(filename):
     return send_from_directory(PF_ESIC_CARDS_FOLDER, filename)
 
-# Main WhatsApp webhook
+# --- WhatsApp Bot ---
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming_msg = request.values.get("Body", "").strip()
@@ -67,7 +73,6 @@ def whatsapp():
     expecting = session.get("expecting")
 
     if incoming_msg.lower() in ["hi", "hello"]:
-        # Verify WhatsApp number is registered
         try:
             df = pd.read_excel(EMP_DETAILS_PATH)
             registered_numbers = df["Mobile"].astype(str).tolist()
@@ -148,6 +153,5 @@ def whatsapp():
         msg.body("❗ Invalid option. Please reply with 'Hi' to restart.")
         return str(resp)
 
-# Run locally for testing
 if __name__ == "__main__":
     app.run(debug=True)
