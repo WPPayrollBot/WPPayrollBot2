@@ -6,22 +6,21 @@ import time
 
 app = Flask(__name__)
 
-# Paths
+# Base paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 EMP_DETAILS_PATH = os.path.join(BASE_DIR, "Emp_Details.xlsx")
 PF_ESIC_PATH = os.path.join(BASE_DIR, "Pf_esic_details.xlsx")
 SALARY_SLIPS_FOLDER = os.path.join(BASE_DIR, "salary_slips")
 PF_ESIC_CARDS_FOLDER = os.path.join(BASE_DIR, "pf_esic_cards")
 
-# External links
+# External URLs
 REFERRAL_FORM_LINK = "https://docs.google.com/forms/d/1hWOzwy0TAEmabUXpWbbjjPr3UGBxNttwbfDrvHFsCUw"
 BASE_URL = "https://comett-10.onrender.com"
 
-# Session tracking
+# Session dictionary
 sessions = {}
-SESSION_TIMEOUT = 180  # 3 minutes
+SESSION_TIMEOUT = 180  # seconds (3 mins)
 
-# Routes
 @app.route("/", methods=["GET"])
 def home():
     return "✅ Comett Payroll Bot is live!"
@@ -38,11 +37,17 @@ def debug_emp():
     except Exception as e:
         return f"❌ Excel load error: {str(e)}"
 
-# Helpers
+# --- Helper Functions ---
+
 def find_emp_row(mobile):
-    df = pd.read_excel(EMP_DETAILS_PATH)
-    row = df[df["Mobile"] == int(mobile)]
-    return row.iloc[0] if not row.empty else None
+    try:
+        df = pd.read_excel(EMP_DETAILS_PATH)
+        df["Mobile"] = df["Mobile"].astype(str).str[-10:]
+        row = df[df["Mobile"] == str(mobile)]
+        return row.iloc[0] if not row.empty else None
+    except Exception as e:
+        print(f"❌ Error in find_emp_row: {e}")
+        return None
 
 def get_salary_pdf(emp_id, month):
     month = month.strip().capitalize()
@@ -57,6 +62,8 @@ def get_pf_esic_pdf(emp_id):
     abs_path = os.path.join(PF_ESIC_CARDS_FOLDER, filename)
     return (filename, abs_path) if os.path.exists(abs_path) else (None, None)
 
+# --- Serve Static Files (PDFs) ---
+
 @app.route("/salary_slips/<path:filename>")
 def serve_salary_pdf(filename):
     if ".." in filename or filename.startswith("/"):
@@ -69,7 +76,8 @@ def serve_pf_card(filename):
         return "❌ Invalid filename", 400
     return send_from_directory(PF_ESIC_CARDS_FOLDER, filename)
 
-# WhatsApp Bot Handler
+# --- WhatsApp Bot Handler ---
+
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     incoming_msg = request.values.get("Body", "").strip()
@@ -84,6 +92,7 @@ def whatsapp():
     resp = MessagingResponse()
     msg = resp.message()
 
+    # Session tracking
     session = sessions.setdefault(phone, {})
     if "timestamp" in session and time.time() - session["timestamp"] > SESSION_TIMEOUT:
         print(f"⏳ Session expired for {phone}")
@@ -93,11 +102,13 @@ def whatsapp():
     session["timestamp"] = time.time()
     expecting = session.get("expecting")
 
+    # Step 1: Welcome / Start
     if incoming_msg.lower() in ["hi", "hello"]:
         print("✅ Received hi/hello")
         try:
             df = pd.read_excel(EMP_DETAILS_PATH)
-            registered_numbers = df["Mobile"].astype(str).str[-10:].tolist()
+            df["Mobile"] = df["Mobile"].astype(str).str[-10:]
+            registered_numbers = df["Mobile"].tolist()
         except Exception as e:
             msg.body("❌ Error reading employee data.")
             print("❌ Excel load error:", e)
@@ -109,32 +120,33 @@ def whatsapp():
             return str(resp)
 
         emp_row = find_emp_row(user_mobile)
-        if not emp_row:
+        if not emp_row is None:
+            session.clear()
+            session["timestamp"] = time.time()
+            session["emp_id"] = emp_row["Emp ID"]
+
+            msg.body(
+                "👋 Welcome to Commet PayrollBot!\n\n"
+                "1️⃣ Salary Slip\n"
+                "2️⃣ PF & ESIC Card\n"
+                "3️⃣ Refer & Earn 📝\n\n"
+                "📞 Contact Support:\n"
+                "• EN - +91 9876543210\n"
+                "• HI - +91 9876543211\n"
+                "• KA - +91 9876543212\n"
+                "• TA - +91 9876543213"
+            )
+        else:
             msg.body("❌ Unable to fetch your record. Contact HR.")
-            return str(resp)
-
-        session.clear()
-        session["timestamp"] = time.time()
-        session["emp_id"] = emp_row["Emp ID"]
-
-        msg.body(
-            "👋 Welcome to Commet PayrollBot!\n\n"
-            "1️⃣ Salary Slip\n"
-            "2️⃣ PF & ESIC Card\n"
-            "3️⃣ Refer & Earn 📝\n\n"
-            "📞 Contact Support:\n"
-            "• EN - +91 9876543210\n"
-            "• HI - +91 9876543211\n"
-            "• KA - +91 9876543212\n"
-            "• TA - +91 9876543213"
-        )
         return str(resp)
 
+    # Step 2: Salary Slip
     elif normalized == "1":
         session["expecting"] = "salary"
         msg.body("📅 Enter the month (e.g., June):")
         return str(resp)
 
+    # Step 3: PF & ESIC Card
     elif normalized == "2":
         session["expecting"] = "pfesic"
         emp_id = session.get("emp_id")
@@ -152,10 +164,12 @@ def whatsapp():
         sessions.pop(phone, None)
         return str(resp)
 
+    # Step 4: Referral
     elif normalized == "3":
-        msg.body(f"📝 Fill this referral form to earn rewards: {REFERRAL_FORM_LINK}")
+        msg.body(f"📝 Fill this referral form to earn rewards:\n{REFERRAL_FORM_LINK}")
         return str(resp)
 
+    # Step 5: Enter Month for Salary Slip
     elif expecting == "salary":
         emp_id = session.get("emp_id")
         if not emp_id:
@@ -173,9 +187,11 @@ def whatsapp():
         sessions.pop(phone, None)
         return str(resp)
 
+    # Fallback
     else:
         msg.body("❗ Invalid option. Please type 'Hi' to restart.")
         return str(resp)
 
+# Run the app
 if __name__ == "__main__":
     app.run(debug=True)
