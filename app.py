@@ -57,7 +57,7 @@ def whatsapp():
         "• TA - +91 9876543213"
     )
 
-    if normalized in ["hi", "hello"] and not expecting:
+    if normalized in ["hi", "hello"]:
         session.clear()
         msg.body(welcome_text)
         return str(resp)
@@ -158,4 +158,6 @@ def download_pf_esic(filename):
     return send_from_directory(PF_ESIC_FOLDER, secure_filename(filename))
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Required for deployment on Render or cloud servers
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
